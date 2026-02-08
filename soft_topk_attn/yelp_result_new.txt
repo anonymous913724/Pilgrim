@@ -1,0 +1,65 @@
+====================================Last Snapshot==========================
+Full model (TASER):
+No-FAISS: warmup_time=209.45s rolling_time=484.55s
+  horizon=1 avg_loss=0.591948 ROC-AUC=0.768 Average Precision=0.665 NDCG@50=0.863 steps=17
+
+Baseline: warmup_time=175.01s rolling_time=423.84s
+  horizon=1 avg_loss=0.630488 ROC-AUC=0.670 Average Precision=0.494 NDCG@50=0.561 steps=17
+====================================Full Result===============================  
+=== Yelp PeerQuantile Task | BASELINE (DGNN only) | model=TASER ===
+pt=data/yelp/yelp_hetero_monthly_C24.pt
+T(raw)=24  S(snaps)=24  Nb=1354 Nu=200998 N=202352
+lags=1 k-hop=2 horizon(train)=1
+recent_window=6 quantile=0.5
+evidence: min_reviewers=5, min_peers=5
+warmup: W=6 epochs=3
+rolling horizons=(1,)
+warmup_epoch=1 avg_loss=0.861955 (kept=6)
+warmup_epoch=2 avg_loss=0.720509 (kept=6)
+warmup_epoch=3 avg_loss=0.637000 (kept=6)
+  t=6 | h1:ROC=0.667,AP=0.461,NDCG@50=0.488
+  t=7 | h1:ROC=0.648,AP=0.442,NDCG@50=0.450
+  t=8 | h1:ROC=0.654,AP=0.442,NDCG@50=0.442
+  t=9 | h1:ROC=0.660,AP=0.457,NDCG@50=0.480
+  t=10 | h1:ROC=0.665,AP=0.462,NDCG@50=0.483
+  t=11 | h1:ROC=0.662,AP=0.460,NDCG@50=0.488
+  t=12 | h1:ROC=0.659,AP=0.464,NDCG@50=0.488
+  t=13 | h1:ROC=0.659,AP=0.472,NDCG@50=0.509
+  t=14 | h1:ROC=0.660,AP=0.473,NDCG@50=0.522
+  t=15 | h1:ROC=0.660,AP=0.474,NDCG@50=0.520
+  t=16 | h1:ROC=0.662,AP=0.483,NDCG@50=0.537
+  t=17 | h1:ROC=0.662,AP=0.483,NDCG@50=0.535
+  t=18 | h1:ROC=0.667,AP=0.491,NDCG@50=0.549
+  t=19 | h1:ROC=0.671,AP=0.494,NDCG@50=0.559
+  t=20 | h1:ROC=0.672,AP=0.495,NDCG@50=0.556
+  t=21 | h1:ROC=0.670,AP=0.495,NDCG@50=0.560
+  t=22 | h1:ROC=0.670,AP=0.494,NDCG@50=0.561
+
+=== Yelp PeerQuantile Task | model=TASER | FAISS=OFF ===
+pt=data/yelp/yelp_hetero_monthly_C24.pt
+T(raw)=24  S(snaps)=24  Nb=1354 Nu=200998 N=202352
+lags=1 k-hop=2 horizon(train)=1
+recent_window=6 quantile=0.5 (0.5=median,0.75=top-quartile)
+evidence: min_reviewers=5, min_peers=5
+warmup: W=6 epochs=3
+rolling horizons=(1,)
+warmup_epoch=1 avg_loss=11.459212 tau=0.6000 (kept=6)
+warmup_epoch=2 avg_loss=9.871974 tau=0.5400 (kept=6)
+warmup_epoch=3 avg_loss=8.593807 tau=0.4860 (kept=6)
+  t=6 | h1:ROC=0.774,AP=0.667,NDCG@50=0.900
+  t=7 | h1:ROC=0.773,AP=0.664,NDCG@50=0.895
+  t=8 | h1:ROC=0.754,AP=0.648,NDCG@50=0.882
+  t=9 | h1:ROC=0.762,AP=0.662,NDCG@50=0.890
+  t=10 | h1:ROC=0.757,AP=0.660,NDCG@50=0.892
+  t=11 | h1:ROC=0.761,AP=0.661,NDCG@50=0.883
+  t=12 | h1:ROC=0.764,AP=0.665,NDCG@50=0.877
+  t=13 | h1:ROC=0.765,AP=0.663,NDCG@50=0.872
+  t=14 | h1:ROC=0.765,AP=0.663,NDCG@50=0.872
+  t=15 | h1:ROC=0.767,AP=0.671,NDCG@50=0.878
+  t=16 | h1:ROC=0.770,AP=0.673,NDCG@50=0.876
+  t=17 | h1:ROC=0.771,AP=0.674,NDCG@50=0.877
+  t=18 | h1:ROC=0.771,AP=0.670,NDCG@50=0.870
+  t=19 | h1:ROC=0.771,AP=0.670,NDCG@50=0.871
+  t=20 | h1:ROC=0.771,AP=0.668,NDCG@50=0.868
+  t=21 | h1:ROC=0.770,AP=0.668,NDCG@50=0.868
+  t=22 | h1:ROC=0.768,AP=0.665,NDCG@50=0.863

@@ -1,0 +1,47 @@
+T(raw)=52  S(snaps)=52  N(counties)=3141
+lags=1 k-hop=2 horizon(train)=1
+train_end_start=2022-01-27  holdout_snaps=0
+anchors kept (deg>0)=3125/3141
+tau_thr(label) percentile=0.80 computed on train = 11.675533
+
+=== COVID Hotspot Exceedance Task | DGNN-only baseline | model=DCRNN ===
+run_time=84.11s
+  [train] avg_loss=0.478828 ROC-AUC=0.853 Average Precision=0.710 Precision@50=0.657 F1=0.360 Recall@50=0.533 NDCG@50=0.741 steps=27
+  [test] avg_loss=0.227425 ROC-AUC=0.902 Average Precision=0.576 Precision@50=0.318 F1=0.532 Recall@50=0.807 NDCG@50=0.749 steps=12
+
+=== COVID Hotspot Exceedance Task | model=DCRNN | FAISS=OFF ===
+No-FAISS: warmup_time=7.52s run_time=2265.18s
+  [train] avg_loss=0.522595 ROC-AUC=0.779 Average Precision=0.680 Precision@50=0.600 F1=0.264 Recall@50=0.507 NDCG@50=0.697 steps=27
+  [test] avg_loss=0.272817 ROC-AUC=0.922 Average Precision=0.614 Precision@50=0.340 F1=0.487 Recall@50=0.839 NDCG@50=0.785 steps=12
+FAISS: warmup_time=7.73s run_time=2260.61s
+  [train] avg_loss=0.420813 ROC-AUC=0.875 Average Precision=0.738 Precision@50=0.673 F1=0.478 Recall@50=0.591 NDCG@50=0.804 steps=27
+  [test] avg_loss=0.277184 ROC-AUC=0.912 Average Precision=0.565 Precision@50=0.342 F1=0.500 Recall@50=0.823 NDCG@50=0.763 steps=12
+  
+  
+  
+=== COVID Hotspot Exceedance Task | DGNN-only baseline | model=SEHTGNN ===
+run_time=80.45s
+  [train] avg_loss=5.308144 ROC-AUC=0.392 Average Precision=0.428 Precision@50=0.312 F1=0.191 Recall@50=0.239 NDCG@50=0.360 steps=27
+  [test] avg_loss=0.722755 ROC-AUC=0.859 Average Precision=0.606 Precision@50=0.332 F1=0.453 Recall@50=0.777 NDCG@50=0.765 steps=12
+  
+=== COVID Hotspot Exceedance Task | model=SEHTGNN | FAISS=OFF ===
+No-FAISS: warmup_time=7.67s run_time=2284.73s
+  [train] avg_loss=2.907158 ROC-AUC=0.382 Average Precision=0.379 Precision@50=0.267 F1=0.087 Recall@50=0.219 NDCG@50=0.323 steps=27
+  [test] avg_loss=0.814891 ROC-AUC=0.765 Average Precision=0.493 Precision@50=0.245 F1=0.175 Recall@50=0.681 NDCG@50=0.647 steps=12
+FAISS: warmup_time=7.85s run_time=2290.75s
+  [train] avg_loss=14.154486 ROC-AUC=0.300 Average Precision=0.331 Precision@50=0.259 F1=0.073 Recall@50=0.140 NDCG@50=0.276 steps=27
+  [test] avg_loss=2.979754 ROC-AUC=0.756 Average Precision=0.536 Precision@50=0.233 F1=0.329 Recall@50=0.631 NDCG@50=0.635 steps=12  
+  
+  
+=== COVID Hotspot Exceedance Task | DGNN-only baseline | model=TASER ===
+run_time=547.70s
+  [train] avg_loss=0.421272 ROC-AUC=0.903 Average Precision=0.739 Precision@50=0.696 F1=0.456 Recall@50=0.594 NDCG@50=0.802 steps=27
+  [test] avg_loss=0.222284 ROC-AUC=0.896 Average Precision=0.683 Precision@50=0.358 F1=0.534 Recall@50=0.803 NDCG@50=0.823 steps=12
+
+=== COVID Hotspot Exceedance Task | model=TASER | FAISS=OFF ===
+No-FAISS: warmup_time=8.92s run_time=2724.15s
+  [train] avg_loss=0.406040 ROC-AUC=0.907 Average Precision=0.773 Precision@50=0.708 F1=0.501 Recall@50=0.589 NDCG@50=0.818 steps=27
+  [test] avg_loss=0.232931 ROC-AUC=0.894 Average Precision=0.566 Precision@50=0.303 F1=0.483 Recall@50=0.807 NDCG@50=0.749 steps=12
+FAISS: warmup_time=9.38s run_time=2725.80s
+  [train] avg_loss=0.418683 ROC-AUC=0.902 Average Precision=0.747 Precision@50=0.682 F1=0.484 Recall@50=0.582 NDCG@50=0.799 steps=27
+  [test] avg_loss=0.248943 ROC-AUC=0.909 Average Precision=0.640 Precision@50=0.310 F1=0.541 Recall@50=0.824 NDCG@50=0.793 steps=12

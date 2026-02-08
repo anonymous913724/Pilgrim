@@ -1,0 +1,37 @@
+PEMS-BAY
+(DCRNN)exclude metric:
+epoch=1 train_loss=0.455803 val_loss=0.361264 val(h1 AUC=0.837, F1=0.927, P@50=0.991; h3 AUC=0.826, F1=0.929, P@50=0.993) test_loss=0.431038 test(h1 AUC=0.815, F1=0.903, P@50=0.972; h3 AUC=0.796, F1=0.899, P@50=0.968) k_frac=0.0515
+epoch=2 train_loss=0.400578 val_loss=0.347980 val(h1 AUC=0.849, F1=0.924, P@50=0.992; h3 AUC=0.831, F1=0.922, P@50=0.993) test_loss=0.420111 test(h1 AUC=0.817, F1=0.896, P@50=0.970; h3 AUC=0.793, F1=0.897, P@50=0.966) k_frac=0.0517
+epoch=3 train_loss=0.409806 val_loss=0.349774 val(h1 AUC=0.837, F1=0.924, P@50=0.991; h3 AUC=0.828, F1=0.925, P@50=0.991) test_loss=0.420471 test(h1 AUC=0.814, F1=0.901, P@50=0.969; h3 AUC=0.794, F1=0.897, P@50=0.974) k_frac=0.0510
+epoch=4 train_loss=0.397459 val_loss=0.347635 val(h1 AUC=0.833, F1=0.914, P@50=0.994; h3 AUC=0.829, F1=0.918, P@50=0.993) test_loss=0.419567 test(h1 AUC=0.803, F1=0.887, P@50=0.971; h3 AUC=0.789, F1=0.889, P@50=0.973) k_frac=0.0498
+epoch=5 train_loss=0.398546 val_loss=0.335360 val(h1 AUC=0.838, F1=0.913, P@50=0.994; h3 AUC=0.828, F1=0.927, P@50=0.992) test_loss=0.408517 test(h1 AUC=0.809, F1=0.886, P@50=0.972; h3 AUC=0.793, F1=0.898, P@50=0.975) k_frac=0.0486
+epoch=6 train_loss=0.397485 val_loss=0.339408 val(h1 AUC=0.840, F1=0.922, P@50=0.991; h3 AUC=0.831, F1=0.929, P@50=0.994) test_loss=0.434081 test(h1 AUC=0.809, F1=0.897, P@50=0.969; h3 AUC=0.789, F1=0.889, P@50=0.968) k_frac=0.0472
+epoch=7 train_loss=0.394414 val_loss=0.328590 val(h1 AUC=0.843, F1=0.915, P@50=0.992; h3 AUC=0.830, F1=0.926, P@50=0.991) test_loss=0.406756 test(h1 AUC=0.814, F1=0.893, P@50=0.972; h3 AUC=0.791, F1=0.889, P@50=0.974) k_frac=0.0457
+epoch=8 train_loss=0.390028 val_loss=0.328045 val(h1 AUC=0.835, F1=0.914, P@50=0.991; h3 AUC=0.831, F1=0.921, P@50=0.995) test_loss=0.407626 test(h1 AUC=0.810, F1=0.886, P@50=0.975; h3 AUC=0.788, F1=0.889, P@50=0.977) k_frac=0.0436
+epoch=9 train_loss=0.388604 val_loss=0.319496 val(h1 AUC=0.844, F1=0.925, P@50=0.991; h3 AUC=0.839, F1=0.925, P@50=0.992) test_loss=0.407840 test(h1 AUC=0.810, F1=0.895, P@50=0.971; h3 AUC=0.792, F1=0.891, P@50=0.980) k_frac=0.0419
+epoch=10 train_loss=0.387009 val_loss=0.332339 val(h1 AUC=0.842, F1=0.918, P@50=0.994; h3 AUC=0.835, F1=0.919, P@50=0.994) test_loss=0.420038 test(h1 AUC=0.809, F1=0.890, P@50=0.971; h3 AUC=0.772, F1=0.878, P@50=0.969) k_frac=0.0402
+
+(DCRNN) metric + mixup:
+epoch=1 train_loss=0.040941 val_loss=0.004783 val(h1 AUC=0.829, F1=0.927, P@50=0.989; h3 AUC=0.814, F1=0.923, P@50=0.984) test_loss=0.006793 test(h1 AUC=0.806, F1=0.893, P@50=0.963; h3 AUC=0.783, F1=0.896, P@50=0.968) k_frac=0.0477
+epoch=2 train_loss=0.031856 val_loss=0.004719 val(h1 AUC=0.844, F1=0.927, P@50=0.994; h3 AUC=0.831, F1=0.924, P@50=0.989) test_loss=0.006811 test(h1 AUC=0.820, F1=0.901, P@50=0.973; h3 AUC=0.791, F1=0.895, P@50=0.969) k_frac=0.0498
+epoch=3 train_loss=0.032114 val_loss=0.004834 val(h1 AUC=0.836, F1=0.926, P@50=0.991; h3 AUC=0.827, F1=0.926, P@50=0.987) test_loss=0.007074 test(h1 AUC=0.809, F1=0.894, P@50=0.965; h3 AUC=0.783, F1=0.884, P@50=0.972) k_frac=0.0508
+epoch=4 train_loss=0.032299 val_loss=0.004703 val(h1 AUC=0.836, F1=0.921, P@50=0.995; h3 AUC=0.831, F1=0.924, P@50=0.993) test_loss=0.006843 test(h1 AUC=0.812, F1=0.889, P@50=0.971; h3 AUC=0.785, F1=0.894, P@50=0.975) k_frac=0.0511
+epoch=5 train_loss=0.031834 val_loss=0.004795 val(h1 AUC=0.841, F1=0.926, P@50=0.994; h3 AUC=0.826, F1=0.924, P@50=0.990) test_loss=0.006928 test(h1 AUC=0.808, F1=0.899, P@50=0.975; h3 AUC=0.774, F1=0.886, P@50=0.971) k_frac=0.0510
+epoch=6 train_loss=0.032407 val_loss=0.004706 val(h1 AUC=0.838, F1=0.930, P@50=0.989; h3 AUC=0.824, F1=0.924, P@50=0.989) test_loss=0.006733 test(h1 AUC=0.800, F1=0.900, P@50=0.972; h3 AUC=0.776, F1=0.890, P@50=0.972) k_frac=0.0511
+epoch=7 train_loss=0.032498 val_loss=0.004667 val(h1 AUC=0.824, F1=0.923, P@50=0.991; h3 AUC=0.821, F1=0.928, P@50=0.994) test_loss=0.006681 test(h1 AUC=0.806, F1=0.890, P@50=0.971; h3 AUC=0.785, F1=0.892, P@50=0.970) k_frac=0.0511
+epoch=8 train_loss=0.033233 val_loss=0.004746 val(h1 AUC=0.840, F1=0.924, P@50=0.991; h3 AUC=0.828, F1=0.925, P@50=0.992) test_loss=0.006603 test(h1 AUC=0.808, F1=0.898, P@50=0.970; h3 AUC=0.780, F1=0.886, P@50=0.976) k_frac=0.0511
+epoch=9 train_loss=0.032365 val_loss=0.004774 val(h1 AUC=0.837, F1=0.924, P@50=0.986; h3 AUC=0.829, F1=0.922, P@50=0.990) test_loss=0.006838 test(h1 AUC=0.810, F1=0.898, P@50=0.972; h3 AUC=0.783, F1=0.879, P@50=0.976) k_frac=0.0510
+epoch=10 train_loss=0.032268 val_loss=0.004676 val(h1 AUC=0.847, F1=0.927, P@50=0.993; h3 AUC=0.831, F1=0.928, P@50=0.994) test_loss=0.006747 test(h1 AUC=0.809, F1=0.897, P@50=0.969; h3 AUC=0.787, F1=0.891, P@50=0.973) k_frac=0.0506
+
+(DCRNN)baseline:
+epoch=1 train_loss=0.442315 val_loss=0.354619 val(h1 AUC=0.842, F1=0.926, P@50=0.953; h3 AUC=0.830, F1=0.926, P@50=0.960) test_loss=0.425072 test(h1 AUC=0.816, F1=0.899, P@50=0.903; h3 AUC=0.793, F1=0.899, P@50=0.920)
+epoch=2 train_loss=0.395495 val_loss=0.330465 val(h1 AUC=0.842, F1=0.924, P@50=0.949; h3 AUC=0.831, F1=0.924, P@50=0.957) test_loss=0.407754 test(h1 AUC=0.817, F1=0.899, P@50=0.894; h3 AUC=0.793, F1=0.895, P@50=0.928)
+epoch=3 train_loss=0.394879 val_loss=0.327670 val(h1 AUC=0.842, F1=0.924, P@50=0.958; h3 AUC=0.831, F1=0.923, P@50=0.956) test_loss=0.408347 test(h1 AUC=0.815, F1=0.901, P@50=0.917; h3 AUC=0.790, F1=0.894, P@50=0.928)
+epoch=4 train_loss=0.386426 val_loss=0.318965 val(h1 AUC=0.841, F1=0.919, P@50=0.960; h3 AUC=0.831, F1=0.920, P@50=0.955) test_loss=0.401951 test(h1 AUC=0.812, F1=0.892, P@50=0.920; h3 AUC=0.787, F1=0.885, P@50=0.928)
+epoch=5 train_loss=0.386490 val_loss=0.320530 val(h1 AUC=0.841, F1=0.918, P@50=0.962; h3 AUC=0.831, F1=0.920, P@50=0.946) test_loss=0.403664 test(h1 AUC=0.813, F1=0.889, P@50=0.923; h3 AUC=0.788, F1=0.887, P@50=0.918)
+epoch=6 train_loss=0.381665 val_loss=0.316500 val(h1 AUC=0.844, F1=0.923, P@50=0.961; h3 AUC=0.832, F1=0.918, P@50=0.974) test_loss=0.402538 test(h1 AUC=0.816, F1=0.897, P@50=0.924; h3 AUC=0.787, F1=0.883, P@50=0.948)
+epoch=7 train_loss=0.383918 val_loss=0.322540 val(h1 AUC=0.841, F1=0.919, P@50=0.958; h3 AUC=0.832, F1=0.925, P@50=0.949) test_loss=0.408594 test(h1 AUC=0.811, F1=0.890, P@50=0.920; h3 AUC=0.787, F1=0.891, P@50=0.923)
+epoch=8 train_loss=0.379546 val_loss=0.314172 val(h1 AUC=0.845, F1=0.928, P@50=0.960; h3 AUC=0.833, F1=0.919, P@50=0.952) test_loss=0.400562 test(h1 AUC=0.814, F1=0.902, P@50=0.917; h3 AUC=0.786, F1=0.883, P@50=0.920)
+epoch=9 train_loss=0.376567 val_loss=0.313956 val(h1 AUC=0.844, F1=0.920, P@50=0.969; h3 AUC=0.832, F1=0.915, P@50=0.954) test_loss=0.405274 test(h1 AUC=0.811, F1=0.891, P@50=0.928; h3 AUC=0.782, F1=0.877, P@50=0.920)
+epoch=10 train_loss=0.377366 val_loss=0.314723 val(h1 AUC=0.844, F1=0.919, P@50=0.975; h3 AUC=0.834, F1=0.922, P@50=0.954) test_loss=0.403952 test(h1 AUC=0.812, F1=0.888, P@50=0.959; h3 AUC=0.788, F1=0.885, P@50=0.920)
+
