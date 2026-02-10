@@ -477,12 +477,7 @@ def train_one_run(args, use_faiss: bool):
     metric_loss = MetricLoss(num_classes=2, d_emb=args.d_emb, code_size=args.d_emb, device=device).to(device)
     mixup = MixupWithMemory(num_classes=2, d_emb=args.d_emb, device=device)
 
-    #params = list(encoder.parameters()) + list(head.parameters()) + list(query_embed.parameters()) + list(attention.parameters()) + list(metric_loss.parameters())
-    params = list(encoder.parameters()) + list(head.parameters()) + list(metric_loss.parameters())
-    if not args.ablate_attn_train:
-        params += list(query_embed.parameters()) + list(attention.parameters())
-    opt = torch.optim.Adam(params, lr=args.lr)
-
+    params = list(encoder.parameters()) + list(head.parameters()) + list(query_embed.parameters()) + list(attention.parameters()) + list(metric_loss.parameters())
     opt = torch.optim.Adam(params, lr=args.lr)
 
     ce = nn.CrossEntropyLoss()
@@ -718,17 +713,8 @@ def train_step_one_snapshot(
 ) -> Optional[float]:
     encoder.train()
     head.train()
-
-    #attention.train()
-    #query_embed.train()
-
-    if args.ablate_attn_train:
-        attention.eval()
-        query_embed.eval()
-    else:
-        attention.train()
-        query_embed.train()
-
+    attention.train()
+    query_embed.train()
     metric_loss.train()
 
     # build X
@@ -779,19 +765,6 @@ def train_step_one_snapshot(
                 k_learned = float(attention._compute_k(int(N)).detach().cpu().item())
             topm = int(math.ceil(k_learned * float(args.faiss_c)))
         topm = max(int(args.faiss_topm_min), min(int(args.faiss_topm_max), int(topm)))
-
-        if args.ablate_attn_train:
-            # random candidates per anchor, deterministic across runs/snapshots
-            g = torch.Generator(device="cpu")
-            g.manual_seed(int(args.seed) + 1000003 * int(snap.t) + 777)  # salt
-            N_cpu = int(N)
-            cand_cpu = torch.stack(
-                [torch.randperm(N_cpu, generator=g)[:topm] for _ in range(int(anchor_indices.numel()))],
-                dim=0,
-            )  # [B, topm] on CPU
-            cand_batch = cand_cpu.to(device=device, dtype=torch.long)
-            # skip FAISS/topk computation entirely
-
         # batch query for all anchors
         h_idx = _get_h_idx(args.horizon)
         emb_q_shared = query_embed(torch.tensor(h_idx, device=device))  # [d]
@@ -834,15 +807,6 @@ def train_step_one_snapshot(
     if warmup:
         beta_div = 0.0
         beta_metric = 0.0
-    if args.ablate_metric:
-        beta_metric = 0.0
-    if args.ablate_mixup:
-        beta_mixup = 0.0
-    if args.ablate_div:
-        # simplest: turn it off by weight
-        # (do this once per step, or once in train_one_run before loops)
-        args.beta_div = 0.0
-
     for _i, anchor_b in enumerate(anchor_indices.tolist()):
         # build k-hop subset on CPU, then move subset to device for indexing embeddings
         subset = _khop_subset(anchor_b, ei_now, args.k_hop, num_nodes=N).to(device=device)
@@ -1236,16 +1200,6 @@ def parse_args():
     p.add_argument('--faiss_max_cand', type=int, default=1024, help='Cap candidate set size after optional union with k-hop.')
     p.add_argument('--faiss_union_khop', action='store_true', help='Union FAISS candidates with k-hop subset.')
     p.add_argument('--faiss_require_torch_gpu', action='store_true', help='Hard-fail if faiss.contrib.torch_utils is unavailable.')
-
-    # -------------------------
-    # Ablation Study
-    # -------------------------
-    p.add_argument("--ablate_attn_train", action="store_true",
-                   help="Freeze attention/query training; use random evidence candidates.")
-    p.add_argument("--ablate_metric", action="store_true", help="Disable metric loss term.")
-    p.add_argument("--ablate_mixup", action="store_true", help="Disable mixup CE term.")
-    p.add_argument("--ablate_div", action="store_true", help="Disable diversity loss term.")
-
     return p.parse_args()
 
 

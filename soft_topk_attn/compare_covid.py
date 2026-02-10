@@ -39,6 +39,7 @@ from diversity_loss_f import diversity_loss
 from mixup_cap import MixupWithMemory
 from metric_loss import MetricLoss
 from metrics_bin_updated import (
+    binary_auc_from_logits,
     roc_auc_from_logits,
     ap_from_logits,
     precision_at_k_from_logits,
@@ -50,6 +51,41 @@ from metrics_bin_updated import (
 # ---- COVID API ----
 from covid import build_nyt_covid_static_graph_temporal_signal
 
+@torch.no_grad()
+def select_topk(Q_batch: torch.Tensor,
+                topm: int,
+                emb_nodes: torch.Tensor,
+                attention=None) -> torch.Tensor:
+    """
+    Mimic FAISS search for non-FAISS case.
+
+    Inputs:
+      Q_batch:   [A, d_out]   (already W_q applied)
+      topm:      int          (learned k, clamped)
+      emb_nodes: [N, d_emb]
+
+    Returns:
+      cand_batch: LongTensor [A, topm]  (node indices)
+    """
+    device = Q_batch.device
+    N = emb_nodes.size(0)
+
+    # compute keys for ALL nodes (same transform FAISS implicitly indexes)
+    K_all = attention.W_k(emb_nodes).detach() if attention is not None else emb_nodes
+
+    # optional normalization (must match your FAISS setting)
+    if attention is not None and getattr(attention, "normalize_qk", False):
+        Q_batch = F.normalize(Q_batch, dim=-1)
+        K_all = F.normalize(K_all, dim=-1)
+
+    # scaled dot-product scores: [A, N]
+    d_out = Q_batch.size(-1)
+    scores = (Q_batch @ K_all.t()) / math.sqrt(d_out)
+
+    # top-k per anchor (unsorted is fine, like FAISS)
+    _, cand_batch = torch.topk(scores, k=min(topm, N), dim=1, largest=True, sorted=False)
+
+    return cand_batch  # [A, topm]
 
 # =========================
 # Timing helpers
@@ -259,47 +295,36 @@ def _subgraph_score_density_normalized(
     denom = math.sqrt(float(subset_cpu.numel()))
     return mean_val / max(1e-12, denom)
 
-
 @torch.no_grad()
 def _compute_tau_thr_from_train(
     *,
     snaps: List[Snap],
-    anchors_cpu: torch.Tensor,        # [A] anchors to consider (filtered)
+    anchors_cpu: torch.Tensor,
     k_hop: int,
     horizon: int,
     q_thr: float,
-    train_last_t: int,          # last t (in snap index space) included in train INPUT
+    train_last_t: int,
+    start_t: int = 0,          # NEW
 ) -> float:
-    """
-    tau_thr computed on TRAIN only:
-      use t in [0 .. train_last_t] but label uses t+horizon
-      so valid t are [0 .. train_last_t - horizon]
-    score is computed at future time t+horizon.
-    """
     q = float(q_thr)
     q = max(0.0, min(1.0, q))
 
-    if train_last_t - horizon < 0:
-        raise ValueError("train_last_t too small for given horizon")
+    start_t = int(max(0, start_t))
+    train_last_t = int(train_last_t)
 
-    # static edge index (cpu) from any snap lag
+    if train_last_t - horizon < start_t:
+        raise ValueError("tau window too small for given horizon")
+
     edge_index_cpu = snaps[0].edge_indices[-1]
     N = int(snaps[0].Nb)
 
     cache: Dict[int, torch.Tensor] = {}
     scores = []
 
-    # node signal is feature[:,0] at each snapshot (already in x_flat)
-    for t in range(0, int(train_last_t - horizon) + 1):
+    for t in range(start_t, int(train_last_t - horizon) + 1):   # CHANGED
         t_f = t + int(horizon)
-        # take current node signal at future snapshot
-        x_f_flat = snaps[t_f].x_flat  # CPU [N, lags*F]
-        # for covid we use feature[:,0] of the LAST lag in that snap’s x_flat.
-        # in build, for each snap, x_flat is concat over lags, and F can be >=1.
-        # index: last lag offset = (lags-1)*F, then +0
-        # for COVID always use lags=1 in practice;
-        # assume node signal is the first feature of x_flat.
-        x_sig = x_f_flat[:, 0].to(dtype=torch.float32)  # [N]
+        x_f_flat = snaps[t_f].x_flat
+        x_sig = x_f_flat[:, 0].to(dtype=torch.float32)
 
         for a in anchors_cpu.tolist():
             subset = _khop_subset_cached(a, edge_index_cpu, k_hop, num_nodes=N, cache=cache)
@@ -311,8 +336,7 @@ def _compute_tau_thr_from_train(
         raise RuntimeError("No scores collected for tau_thr computation.")
 
     scores_t = torch.tensor(scores, dtype=torch.float32)
-    tau_thr = float(torch.quantile(scores_t, q).item())
-    return tau_thr
+    return float(torch.quantile(scores_t, q).item())
 
 
 @torch.no_grad()
@@ -504,15 +528,6 @@ def train_one_run(args, use_faiss: bool):
     # train_last_t in snap-index space: last raw t among train snaps
     train_last_raw_effective = max(int(snaps[i].t) for i in train_ids)
 
-    tau_thr = _compute_tau_thr_from_train(
-        snaps=snaps,
-        anchors_cpu=anchors_all_cpu,
-        k_hop=args.k_hop,
-        horizon=args.horizon,
-        q_thr=args.q_thr,
-        train_last_t=train_last_raw_effective,
-    )
-
     print(f"\n=== COVID Hotspot Exceedance Task | model={args.model} | FAISS={'ON' if use_faiss else 'OFF'} ===")
     print(f"nyt_csv={args.nyt_csv}")
     print(f"adj_txt={args.adj_txt}")
@@ -520,8 +535,8 @@ def train_one_run(args, use_faiss: bool):
     print(f"lags={args.lags} k-hop={args.k_hop} horizon(train)={args.horizon}")
     print(f"train_end_start={args.train_end_start}  holdout_snaps={args.holdout_snaps}")
     print(f"anchors kept (deg>0)={int(anchors_all_cpu.numel())}/{N}")
-    print(f"tau_thr(label) percentile={args.q_thr:.2f} computed on train = {tau_thr:.6f}")
-    print(f"(NOTE) args.tau is ATTENTION temperature; tau_thr is LABEL threshold.")
+    #print(f"tau_thr(label) percentile={args.q_thr:.2f} computed on train = {tau_thr:.6f}")
+    #print(f"(NOTE) args.tau is ATTENTION temperature; tau_thr is LABEL threshold.")
 
     # ---- warmup ----
     W = max(1, min(args.warmup_snaps, len(train_inner_ids) - 1 if len(train_inner_ids) > 1 else 1))
@@ -529,8 +544,12 @@ def train_one_run(args, use_faiss: bool):
 
     _sync_if_cuda(device)
     t0 = _now()
+    subset_cache_cpu: Dict[int, torch.Tensor] = {}  # task subgraph cache (CPU)
+    anchor_cache_cpu: Dict[Tuple[str, int, int], torch.Tensor] = {}
+    WARMUP = True
     for ep in range(args.epochs_warmup):
         tau_ep = args.tau * (args.anneal ** ep)
+        beta_div_ep = args.beta_div
         beta_metric_ep = args.beta_metric * (args.anneal ** ep)
         beta_mixup_ep = args.beta_mixup * (args.anneal ** ep)
 
@@ -538,8 +557,25 @@ def train_one_run(args, use_faiss: bool):
         use_faiss_ep = bool(use_faiss) and (ep == int(args.epochs_warmup) - 1)
 
         losses = []
-        subset_cache_cpu: Dict[int, torch.Tensor] = {}  # task subgraph cache (CPU)
+        # subset_cache_cpu: Dict[int, torch.Tensor] = {}  # task subgraph cache (CPU)
+        # anchor_cache_cpu: Dict[Tuple[str, int, int], torch.Tensor] = {}
         for k in range(min(W, len(train_inner_ids))):
+            cur_raw_t = int(snaps[k].t)
+            # rolling tau window end at current time (uses only <= cur_raw_t)
+            if cur_raw_t < int(args.horizon):
+                tau_thr = float(args.tau_thr_init)  # or reuse previous tau_thr
+            else:
+                start_t = max(0, cur_raw_t - int(args.tau_roll_window) + 1)
+                start_t = min(start_t, cur_raw_t - int(args.horizon))  # <-- KEY clamp
+                tau_thr = _compute_tau_thr_from_train(
+                    snaps=snaps,
+                    anchors_cpu=anchors_all_cpu,
+                    k_hop=args.k_hop,
+                    horizon=args.horizon,
+                    q_thr=args.q_thr,
+                    train_last_t=cur_raw_t,
+                    start_t=start_t,
+                )
             idx = train_inner_ids[k]
             loss_val = train_step_one_snapshot(
                 args=args,
@@ -557,6 +593,7 @@ def train_one_run(args, use_faiss: bool):
                 ce=ce,
                 device=device,
                 tau=tau_ep,
+                beta_div=beta_div_ep,
                 beta_metric=beta_metric_ep,
                 beta_mixup=beta_mixup_ep,
                 use_faiss=use_faiss_ep,
@@ -564,11 +601,15 @@ def train_one_run(args, use_faiss: bool):
                 faiss_use_topm_init=bool(use_faiss_ep),
                 tau_thr=tau_thr,
                 subset_cache_cpu=subset_cache_cpu,
+                anchor_cache_cpu=anchor_cache_cpu,
+                warmup = WARMUP,
             )
             if loss_val is not None:
                 losses.append(loss_val)
         avg = sum(losses) / max(1, len(losses))
         print(f"warmup_epoch={ep+1} avg_loss={avg:.6f} tau(attn)={tau_ep:.4f} (kept={len(losses)})")
+
+    WARMUP = False
 
     _sync_if_cuda(device)
     warmup_time = _now() - t0
@@ -594,15 +635,100 @@ def train_one_run(args, use_faiss: bool):
     test_set = set(test_ids)
     #print(f"Train snap ids: {train_inner_set} \t Test snap ids: {test_set}")
 
-    acc_train = {"loss": 0.0, "roc_auc": 0.0, "ap": 0.0, "precision@k": 0.0, "recall@k": 0.0, "F1": 0.0, "ndcg@k": 0.0, "n": 0}
-    acc_hold  = {"loss": 0.0, "roc_auc": 0.0, "ap": 0.0, "precision@k": 0.0, "recall@k": 0.0, "F1": 0.0, "ndcg@k": 0.0, "n": 0}
-    acc_test  = {"loss": 0.0, "roc_auc": 0.0, "ap": 0.0, "precision@k": 0.0, "recall@k": 0.0, "F1": 0.0, "ndcg@k": 0.0, "n": 0}
+    acc_train = {"loss": 0.0, "auc": 0.0, "roc_auc": 0.0, "ap": 0.0, "precision@k": 0.0, "recall@k": 0.0, "F1": 0.0, "ndcg@k": 0.0, "n": 0}
+    acc_hold  = {"loss": 0.0, "auc": 0.0, "roc_auc": 0.0, "ap": 0.0, "precision@k": 0.0, "recall@k": 0.0, "F1": 0.0, "ndcg@k": 0.0, "n": 0}
+    acc_test  = {"loss": 0.0, "auc": 0.0, "roc_auc": 0.0, "ap": 0.0, "precision@k": 0.0, "recall@k": 0.0, "F1": 0.0, "ndcg@k": 0.0, "n": 0}
 
-    subset_cache_cpu: Dict[int, torch.Tensor] = {}
+    # subset_cache_cpu: Dict[int, torch.Tensor] = {}
+    # anchor_cache_cpu: Dict[Tuple[str, int, int], torch.Tensor] = {}
+
+    #t_eva_count = 0
+    t_eva_total = 0.0
+
 
     for ii, idx in enumerate(all_ids_sorted):
+        cur_raw_t = int(snaps[idx].t)
+        # rolling tau_thr (needs at least horizon snapshots)
+        if cur_raw_t < int(args.horizon):
+            tau_thr = float(args.tau_thr_init)  # or reuse previous tau_thr
+        else:
+            start_t = max(0, cur_raw_t - int(args.tau_roll_window) + 1)
+            start_t = min(start_t, cur_raw_t - int(args.horizon))  # <-- KEY clamp
+            tau_thr = _compute_tau_thr_from_train(
+                snaps=snaps,
+                anchors_cpu=anchors_all_cpu,
+                k_hop=args.k_hop,
+                horizon=args.horizon,
+                q_thr=args.q_thr,
+                train_last_t=cur_raw_t,
+                start_t=start_t,
+            )
+
         # rolling history window from the past
         hist_ids = _rolling_history_ids(all_ids_sorted, cur_idx=idx, history=int(args.roll_history))
+
+        # 2) (optional) burn-in: skip metrics for first B steps
+        if ii < int(args.burnin_eval):
+            continue
+
+        # 2) eval current idx
+        tau_i = args.tau * (args.anneal ** (ii / max(1, len(all_ids_sorted))))
+        t_eva_start = _now()
+        #t_eva_count += 1
+        loss_h, m_h, inf_time = eval_one_snapshot(
+            args=args,
+            snaps=snaps,
+            snap=snaps[idx],
+            Nb=N,
+            anchors_all_cpu=anchors_all_cpu,
+            encoder=encoder,
+            head=head,
+            attention=attention,
+            query_embed=query_embed,
+            ce=ce,
+            device=device,
+            tau=tau_i,
+            horizon=args.horizon,
+            use_faiss=bool(use_faiss),
+            retriever=retriever,
+            tau_thr=tau_thr,
+            subset_cache_cpu=subset_cache_cpu,
+            anchor_cache_cpu=anchor_cache_cpu,
+        )
+        t_eva_total += inf_time
+
+
+
+
+        if idx in train_inner_set:
+            acc = acc_train
+            name = "train"
+        elif idx in holdout_set:
+            acc = acc_hold
+            name = "holdout"
+        else:
+            acc = acc_test
+            name = "test"
+
+        acc["loss"] += float(loss_h)
+        acc["auc"] += float(m_h["auc"])
+        acc["roc_auc"] += float(m_h["roc_auc"])
+        acc["ap"] += float(m_h["ap"])
+        acc["precision@k"] += float(m_h["precision@k"])
+        acc["recall@k"] += float(m_h["recall@k"])
+        acc["F1"] += float(m_h["F1"])
+        acc["ndcg@k"] += float(m_h["ndcg@k"])
+        acc["n"] += 1
+
+        if (ii % max(1, args.print_every)) == 0 and name == "train":
+            print(
+                f"  t={snaps[idx].t:<3d}  loss={float(loss_h):.4f}  "
+                f"AUC={float(m_h['auc']):.4f}  "
+                f"ROC-AUC={float(m_h['roc_auc']):.4f}  AP={float(m_h['ap']):.4f}  "
+                f"F1={float(m_h['F1']):.4f}  "
+                f"P@k={float(m_h['precision@k']):.4f}  R@k={float(m_h['recall@k']):.4f}  "
+                f"NDCG@k={float(m_h['ndcg@k']):.4f}"
+            )
 
         # 1) train on history window (if any)
         if len(hist_ids) > 0:
@@ -614,6 +740,7 @@ def train_one_run(args, use_faiss: bool):
             for ep in range(int(args.roll_epochs)):
                 for jj, jdx in enumerate(hist_ids):
                     tau_j = args.tau * (args.anneal ** (jj / max(1, len(hist_ids))))
+                    beta_div_j = args.beta_div
                     beta_metric_j = args.beta_metric * (args.anneal ** (jj / max(1, len(hist_ids))))
                     beta_mixup_j = args.beta_mixup * (args.anneal ** (jj / max(1, len(hist_ids))))
 
@@ -633,6 +760,7 @@ def train_one_run(args, use_faiss: bool):
                         ce=ce,
                         device=device,
                         tau=tau_j,
+                        beta_div = beta_div_j,
                         beta_metric=beta_metric_j,
                         beta_mixup=beta_mixup_j,
                         use_faiss=use_faiss,
@@ -640,67 +768,19 @@ def train_one_run(args, use_faiss: bool):
                         faiss_use_topm_init=False,
                         tau_thr=tau_thr,
                         subset_cache_cpu=subset_cache_cpu,
+                        anchor_cache_cpu=anchor_cache_cpu,
+                        warmup=WARMUP,
                     )
 
-        # 2) (optional) burn-in: skip metrics for first B steps
-        if ii < int(args.burnin_eval):
-            continue
 
-        # 2) eval current idx
-        tau_i = args.tau * (args.anneal ** (ii / max(1, len(all_ids_sorted))))
-        loss_h, m_h = eval_one_snapshot(
-            args=args,
-            snaps=snaps,
-            snap=snaps[idx],
-            Nb=N,
-            anchors_all_cpu=anchors_all_cpu,
-            encoder=encoder,
-            head=head,
-            attention=attention,
-            query_embed=query_embed,
-            ce=ce,
-            device=device,
-            tau=tau_i,
-            horizon=args.horizon,
-            use_faiss=bool(use_faiss),
-            retriever=retriever,
-            tau_thr=tau_thr,
-            subset_cache_cpu=subset_cache_cpu,
-        )
-
-        if idx in train_inner_set:
-            acc = acc_train
-            name = "train"
-        elif idx in holdout_set:
-            acc = acc_hold
-            name = "holdout"
-        else:
-            acc = acc_test
-            name = "test"
-
-        acc["loss"] += float(loss_h)
-        acc["roc_auc"] += float(m_h["roc_auc"])
-        acc["ap"] += float(m_h["ap"])
-        acc["precision@k"] += float(m_h["precision@k"])
-        acc["recall@k"] += float(m_h["recall@k"])
-        acc["F1"] += float(m_h["F1"])
-        acc["ndcg@k"] += float(m_h["ndcg@k"])
-        acc["n"] += 1
-
-        if (ii % max(1, args.print_every)) == 0 and name == "train":
-            print(
-                f"  t={snaps[idx].t:<3d}  loss={float(loss_h):.4f}  "
-                f"ROC-AUC={float(m_h['roc_auc']):.4f}  AP={float(m_h['ap']):.4f}  "
-                f"P@k={float(m_h['precision@k']):.4f}  R@k={float(m_h['recall@k']):.4f}  "
-                f"NDCG@k={float(m_h['ndcg@k']):.4f}"
-            )
 
     def _finalize(acc: Dict[str, float]) -> Dict[str, float]:
         n = int(acc["n"])
         if n <= 0:
-            return {"avg_loss": 0.0, "roc_auc": 0.5, "ap": 0.0, "precision@k": 0.0, "recall@k": 0.0, "F1": 0.0, "ndcg@k": 0.0, "steps": 0}
+            return {"avg_loss": 0.0, "auc": 0.5, "roc_auc": 0.5, "ap": 0.0, "precision@k": 0.0, "recall@k": 0.0, "F1": 0.0, "ndcg@k": 0.0, "steps": 0}
         return {
             "avg_loss": acc["loss"] / n,
+            "auc": acc["auc"] / n,
             "roc_auc": acc["roc_auc"] / n,
             "ap": acc["ap"] / n,
             "precision@k": acc["precision@k"] / n,
@@ -716,7 +796,7 @@ def train_one_run(args, use_faiss: bool):
 
     _sync_if_cuda(device)
     run_time = _now() - t1
-    return warmup_time, run_time, {"train": res_train, "holdout": res_hold, "test": res_test}
+    return warmup_time, run_time, {"train": res_train, "holdout": res_hold, "test": res_test}, t_eva_total
 
 
 
@@ -725,21 +805,35 @@ def _get_h_idx(h: int) -> int:
     return 0 if int(h) == 1 else 1
 
 
-def _sample_anchors_business_only(Nb: int, k: int, device: torch.device) -> torch.Tensor:
-    cand = torch.arange(Nb, device=device)
-    if k is None or k < 0 or k >= cand.numel():
-        return cand
-    perm = torch.randperm(cand.numel(), device=device)
-    return cand[perm[:k]]
+def _sample_anchors_from_filtered_cpu(
+    anchors_all_cpu: torch.Tensor,
+    k: int,
+    device: torch.device,
+    *,
+    t_key: int,
+    mode: str,
+    base_seed: int,
+    cache_cpu: Optional[Dict[Tuple[str, int, int], torch.Tensor]] = None,
+) -> torch.Tensor:
+    # keep Yelp style: sample by randperm
+    cache_key = (str(mode), int(t_key), int(k))
+    if cache_cpu is not None and cache_key in cache_cpu:
+        return cache_cpu[cache_key].to(device=device)
 
-
-def _sample_anchors_from_filtered_cpu(anchors_all_cpu: torch.Tensor, k: int, device: torch.device) -> torch.Tensor:
-    # sample by randperm
     a = anchors_all_cpu.to(device=device)
     if k is None or k < 0 or k >= a.numel():
-        return a
-    perm = torch.randperm(a.numel(), device=device)
-    return a[perm[:k]]
+        out = a
+    else:
+        # per-snapshot deterministic generator (independent of call order)
+        g = torch.Generator(device=device)
+        g.manual_seed(int(base_seed) + 1000003 * int(t_key) + (1 if mode == "train" else 2))
+        perm = torch.randperm(a.numel(), device=device, generator=g)
+        out = a[perm[:k]]
+
+    if cache_cpu is not None:
+        cache_cpu[cache_key] = out.detach().cpu()
+    return out
+
 
 
 # =========================
@@ -762,6 +856,7 @@ def train_step_one_snapshot(
     ce: nn.CrossEntropyLoss,
     device: torch.device,
     tau: float,                   # attention temperature
+    beta_div: float,
     beta_metric: float,
     beta_mixup: float,
     use_faiss: bool,
@@ -769,6 +864,8 @@ def train_step_one_snapshot(
     faiss_use_topm_init: bool = False,
     tau_thr: float = 0.0,         # LABEL threshold
     subset_cache_cpu: Optional[Dict[int, torch.Tensor]] = None,
+    anchor_cache_cpu: Optional[Dict[Tuple[str, int, int], torch.Tensor]] = None,
+    warmup: bool = False, #warmup flag
 ) -> Optional[float]:
     encoder.train()
     head.train()
@@ -791,7 +888,16 @@ def train_step_one_snapshot(
     N = emb_nodes.size(0)
 
     # NOTE: use filtered anchors for COVID (degree>0)
-    anchor_indices = _sample_anchors_from_filtered_cpu(anchors_all_cpu, k=args.anchors_train, device=device)
+    #anchor_indices = _sample_anchors_from_filtered_cpu(anchors_all_cpu, k=args.anchors_train, device=device)
+    anchor_indices = _sample_anchors_from_filtered_cpu(
+        anchors_all_cpu,
+        k=int(args.anchors_train),
+        device=device,
+        t_key=int(snap.t),
+        mode="train",
+        base_seed=int(args.seed),
+        cache_cpu=anchor_cache_cpu,
+    )
 
     # =========================
     # FAISS (optional): build index once per snapshot and precompute candidates for all anchors
@@ -832,12 +938,35 @@ def train_step_one_snapshot(
             normalize=getattr(attention, 'normalize_qk', False),
             require_torch_gpu=bool(args.faiss_require_torch_gpu),
         )  # [B, topm]
+    else:
+        # compute topm (warmup init vs learned k)
+        if faiss_use_topm_init:
+            if int(args.faiss_topm_init) > 0:
+                topm = int(args.faiss_topm_init)
+            else:
+                kabsmx = float(getattr(attention, 'k_abs_max', args.k_abs_max))
+                topm = int(math.ceil(kabsmx * float(args.faiss_c)))
+        else:
+            with torch.no_grad():
+                k_learned = float(attention._compute_k(int(N)).detach().cpu().item())
+            topm = int(math.ceil(k_learned * float(args.faiss_c)))
+        topm = max(int(args.faiss_topm_min), min(int(args.faiss_topm_max), int(topm)))
+        h_idx = _get_h_idx(args.horizon)
+        emb_q_shared = query_embed(torch.tensor(h_idx, device=device))
+        qa = emb_nodes[anchor_indices] + emb_q_shared.view(1, -1)
+        Q_batch = attention.W_q(qa).detach()
+        if getattr(attention, 'normalize_qk', False):
+            Q_batch = F.normalize(Q_batch, dim=-1)
+        cand_batch = select_topk(Q_batch=Q_batch, topm=topm, emb_nodes=emb_nodes, attention=attention)
 
     loss_t = 0.0
     all_context, all_query, all_target = [], [], []
 
     # use last-lag edges for subgraph extraction (CPU)
     ei_now_cpu = snap.edge_indices[-1]  # CPU
+    if warmup:
+        beta_div = 0.0
+        beta_metric = 0.0
     for _i, anchor_b in enumerate(anchor_indices.tolist()):
         # label on CPU
         y = label_peer_quantile_future_count(
@@ -888,10 +1017,16 @@ def train_step_one_snapshot(
                 return_intermediates=True,
             )
         else:
-            context, attn, soft_mask, scores, Q, K, theta, k = attention(
+            if cand_batch is None:
+                raise RuntimeError('use_faiss=True but cand_batch is None')
+            cand_ids = cand_batch[_i].view(-1)
+            if cand_ids.numel() > int(args.faiss_max_cand):
+                cand_ids = cand_ids[: int(args.faiss_max_cand)]
+            emb_nodes_c = emb_nodes[cand_ids]
+            context, attn, soft_mask, scores, Q, K, theta, k = attention.forward_candidates(
                 emb_q=emb_q,
                 emb_a=emb_a,
-                emb_nodes=emb_nodes,
+                emb_nodes_cand=emb_nodes_c,
                 node_mask=None,
                 tau=tau,
                 return_intermediates=True,
@@ -903,9 +1038,11 @@ def train_step_one_snapshot(
         loss_t = loss_t + ce(logits2.view(1, 2), y_class)
 
         # diversity term 
-        if args.beta_div > 0:
+        #if args.beta_div > 0:
+
+        if beta_div > 0:
             k_hard = max(2, int(round(float(k.detach().cpu().item()))))
-            loss_t = loss_t + args.beta_div * diversity_loss(attn, emb_nodes, k=k_hard, node_mask=None)
+            loss_t = loss_t + beta_div * diversity_loss(attn, emb_nodes, k=k_hard, node_mask=None)
 
         all_context.append(context)
         all_query.append(emb_q)
@@ -964,6 +1101,7 @@ def eval_one_snapshot(
     retriever: Optional[object],
     tau_thr: float = 0.0,       # LABEL threshold
     subset_cache_cpu: Optional[Dict[int, torch.Tensor]] = None,
+    anchor_cache_cpu: Optional[Dict[Tuple[str, int, int], torch.Tensor]] = None,
 ) -> Tuple[float, Dict[str, float]]:
     encoder.eval()
     head.eval()
@@ -982,26 +1120,30 @@ def eval_one_snapshot(
     emb_nodes = encoder(X, eis, ews)
     N = emb_nodes.size(0)
 
-    anchor_indices = _sample_anchors_from_filtered_cpu(anchors_all_cpu, k=args.anchors_eval, device=device)
+    #anchor_indices = _sample_anchors_from_filtered_cpu(anchors_all_cpu, k=args.anchors_eval, device=device)
+    anchor_indices = _sample_anchors_from_filtered_cpu(
+        anchors_all_cpu,
+        k=int(args.anchors_eval),
+        device=device,
+        t_key=int(snap.t),
+        mode="eval",
+        base_seed=int(args.seed),
+        cache_cpu=anchor_cache_cpu,
+    )
 
     # =========================
     # FAISS (optional)
     # =========================
+    inf_t_total = 0.0
     cand_batch = None
+    inf_t_start = _now()
     if use_faiss:
         if retriever is None:
             raise RuntimeError('use_faiss=True but retriever is None')
-        valid_idx = torch.arange(N, device=device, dtype=torch.long)
-        K_all = attention.W_k(emb_nodes).detach()
-        retriever.build(
-            K_all,
-            valid_idx=valid_idx,
-            normalize=getattr(attention, 'normalize_qk', False),
-            require_torch_gpu=bool(args.faiss_require_torch_gpu),
-        )
+
         with torch.no_grad():
             k_learned = float(attention._compute_k(int(N)).detach().cpu().item())
-        topm = int(math.ceil(k_learned * float(args.faiss_c)))
+        topm = int(k_learned)
         topm = max(int(args.faiss_topm_min), min(int(args.faiss_topm_max), int(topm)))
 
         h_idx = _get_h_idx(horizon)
@@ -1016,8 +1158,21 @@ def eval_one_snapshot(
             normalize=getattr(attention, 'normalize_qk', False),
             require_torch_gpu=bool(args.faiss_require_torch_gpu),
         )
+    else:
+        with torch.no_grad():
+            k_learned = float(attention._compute_k(int(N)).detach().cpu().item())
+        topm = int(k_learned)
+        topm = max(int(args.faiss_topm_min), min(int(args.faiss_topm_max), int(topm)))
+        h_idx = _get_h_idx(horizon)
+        emb_q_shared = query_embed(torch.tensor(h_idx, device=device))
+        qa = emb_nodes[anchor_indices] + emb_q_shared.view(1, -1)
+        Q_batch = attention.W_q(qa).detach()
+        if getattr(attention, 'normalize_qk', False):
+            Q_batch = F.normalize(Q_batch, dim=-1)
+        cand_batch = select_topk(Q_batch=Q_batch, topm=topm, emb_nodes=emb_nodes, attention=attention)
 
-    # for metrics 
+    inf_t_total += _now() - inf_t_start
+    # for metrics
     scores_cpu = []
     labels_cpu = []
     snapshot_scores = torch.full((Nb,), float("-inf"), device=device)
@@ -1048,6 +1203,8 @@ def eval_one_snapshot(
         emb_a = emb_nodes[anchor_b]
         emb_q = query_embed(torch.tensor(h_idx, device=device))
 
+        #inf_t_start = _now()
+
         if use_faiss:
             if cand_batch is None:
                 raise RuntimeError('use_faiss=True but cand_batch is None')
@@ -1074,15 +1231,23 @@ def eval_one_snapshot(
                 return_intermediates=True,
             )
         else:
-            context, attn, soft_mask, scores, Q, K, theta, k = attention(
+            if cand_batch is None:
+                raise RuntimeError('use_faiss=True but cand_batch is None')
+            cand_ids = cand_batch[_i].view(-1)
+            if cand_ids.numel() > int(args.faiss_max_cand):
+                cand_ids = cand_ids[: int(args.faiss_max_cand)]
+            emb_nodes_c = emb_nodes[cand_ids]
+            context, attn, soft_mask, scores, Q, K, theta, k = attention.forward_candidates(
                 emb_q=emb_q,
                 emb_a=emb_a,
-                emb_nodes=emb_nodes,
+                emb_nodes_cand=emb_nodes_c,
                 node_mask=None,
                 tau=tau,
                 return_intermediates=True,
             )
 
+        #inf_t = _now() - inf_t_start
+        #inf_t_total += inf_t
         rep = emb_a + emb_q + context
         logits2 = head(rep)
 
@@ -1097,13 +1262,14 @@ def eval_one_snapshot(
         snapshot_labels[anchor_b] = float(int(y))
 
     if used == 0:
-        return 0.0, {"roc_auc": 0.5, "ap": 0.0, "precision@k": 0.0, "recall@k": 0.0, "F1": 0.0, "ndcg@k": 0.0}
+        return 0.0, {"auc": 0.5, "roc_auc": 0.5, "ap": 0.0, "precision@k": 0.0, "recall@k": 0.0, "F1": 0.0, "ndcg@k": 0.0}
 
     avg_loss = loss_sum / float(used)
     scores_cpu_t = torch.tensor(scores_cpu, dtype=torch.float32)
     labels_cpu_t = torch.tensor(labels_cpu, dtype=torch.float32)
 
     metrics = {
+        "auc": binary_auc_from_logits(scores_cpu_t, labels_cpu_t),
         "roc_auc": roc_auc_from_logits(scores_cpu_t, labels_cpu_t),
         "ap": ap_from_logits(scores_cpu_t, labels_cpu_t),
         "precision@k": precision_at_k_from_logits(scores_cpu_t, labels_cpu_t, k=args.k_eval),
@@ -1112,7 +1278,7 @@ def eval_one_snapshot(
         "ndcg@k": ndcg_at_k_from_logits(scores_cpu_t, labels_cpu_t, k=args.k_eval),
     }
 
-    return avg_loss, metrics
+    return avg_loss, metrics, inf_t_total
 
 
 # =========================
@@ -1130,7 +1296,7 @@ def parse_args():
     p.add_argument("--feature_mode", type=str, default="cases_only", choices=["cases_only", "cases_deaths"])
 
     # split
-    p.add_argument("--train_end_start", type=str, default="2022-01-30",
+    p.add_argument("--train_end_start", type=str, default="2022-04-30",
                    help="train last snapshot start date (inclusive); test starts next snapshot")
     p.add_argument("--holdout_snaps", type=int, default=0, help="internal holdout size (snapshots) inside train (not used in online learning, set 0)")
 
@@ -1146,6 +1312,10 @@ def parse_args():
 
     # threshold percentile for label (DEFAULT 0.85 per your request)
     p.add_argument("--q_thr", type=float, default=0.9)
+    p.add_argument("--tau_roll_window", type=int, default=8,
+                        help="rolling window size (in snapshots) to compute tau_thr")
+    p.add_argument("--tau_thr_init", type=float, default=0.0,
+                        help="fallback tau_thr used before rolling window is valid")
 
     # model dims
     p.add_argument("--d_emb", type=int, default=64)
@@ -1158,6 +1328,8 @@ def parse_args():
     p.add_argument("--anchors_train", type=int, default=512)
     p.add_argument("--anchors_eval", type=int, default=512)
     p.add_argument("--k_eval", type=int, default=50)
+
+    p.add_argument("--seed", type=int, default=0)
 
     # warmup
     p.add_argument("--warmup_snaps", type=int, default=4)
@@ -1177,6 +1349,7 @@ def parse_args():
     p.add_argument("--beta_div", type=float, default=0.1)
     p.add_argument("--beta_metric", type=float, default=0.5)
     p.add_argument("--beta_mixup", type=float, default=1.0)
+
 
     # -------------------------
     # FAISS (optional)
@@ -1209,17 +1382,28 @@ def parse_args():
 def main():
     args = parse_args()
 
+    import random
+    import numpy as np
+
+    random.seed(int(args.seed))
+    np.random.seed(int(args.seed))
+    torch.manual_seed(int(args.seed))
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(int(args.seed))
+
     # Run baseline (FAISS off) always
-    warm0, run0, summ0 = train_one_run(args, use_faiss=False)
+    warm0, run0, summ0, eval_time0 = train_one_run(args, use_faiss=False)
 
     print("\n===== Summary =====")
-    print(f"No-FAISS: warmup_time={warm0:.2f}s run_time={run0:.2f}s")
+    print(f"No-FAISS: warmup_time={warm0:.2f}s run_time={run0:.2f}s eval_time={eval_time0}s")
     for split, m in summ0.items():
-        if split != "holdout":
+        if split == "train":
             print(
                 f"  [{split}] avg_loss={m['avg_loss']:.6f} "
+                f"AUC={m['auc']:.3f} "
                 f"ROC-AUC={m['roc_auc']:.3f} Average Precision={m['ap']:.3f} "
-                f"Precision@{args.k_eval}={m['precision@k']:.3f} F1={m['F1']:.3f} Recall@{args.k_eval}={m['recall@k']:.3f} "
+                f"F1={m['F1']:.3f} "
+                f"Precision@{args.k_eval}={m['precision@k']:.3f} Recall@{args.k_eval}={m['recall@k']:.3f} "
                 f"NDCG@{args.k_eval}={m['ndcg@k']:.3f} "
                 f"steps={m['steps']}"
             )
@@ -1227,14 +1411,16 @@ def main():
 
     # Optional: run FAISS candidate retrieval (candidate-only attention)
     if bool(getattr(args, 'use_faiss', False)):
-        warm1, run1, summ1 = train_one_run(args, use_faiss=True)
-        print(f"\nFAISS: warmup_time={warm1:.2f}s run_time={run1:.2f}s")
+        warm1, run1, summ1, eval_time1 = train_one_run(args, use_faiss=True)
+        print(f"\nFAISS: warmup_time={warm1:.2f}s run_time={run1:.2f}s eval_time={eval_time1}s")
         for split, m in summ1.items():
-            if split != "holdout":
+            if split == "train":
                 print(
                     f"  [{split}] avg_loss={m['avg_loss']:.6f} "
+                    f"AUC={m['auc']:.3f} "
                     f"ROC-AUC={m['roc_auc']:.3f} Average Precision={m['ap']:.3f} "
-                    f"Precision@{args.k_eval}={m['precision@k']:.3f} F1={m['F1']:.3f} Recall@{args.k_eval}={m['recall@k']:.3f} "
+                    f"F1={m['F1']:.3f} "
+                    f"Precision@{args.k_eval}={m['precision@k']:.3f} Recall@{args.k_eval}={m['recall@k']:.3f} "
                     f"NDCG@{args.k_eval}={m['ndcg@k']:.3f} "
                     f"steps={m['steps']}"
                 )

@@ -1,4 +1,26 @@
 #!/usr/bin/env bash
-# Run Yelp comparison (hardcoded config inside script)
 
-python3 soft_topk_attn/compare_yelp.py
+python3 soft_topk_attn/yelp_full_faiss.py \
+    --pt data/yelp/yelp_hetero_monthly_C24.pt \
+    --use_faiss \
+    --quantile 0.25 \
+    --model TASER
+
+python3 soft_topk_attn/yelp_baseline.py \
+    --pt data/yelp/yelp_hetero_monthly_C24.pt \
+    --quantile 0.25 \
+    --model TASER
+
+python3 soft_topk_attn/yelp_full_faiss.py \
+    --pt data/yelp/yelp_hetero_monthly_C24.pt \
+    --use_faiss \
+    --quantile 0.25 \
+    --model SEHTGNN
+
+python3 soft_topk_attn/yelp_baseline.py \
+    --pt data/yelp/yelp_hetero_monthly_C24.pt \
+    --quantile 0.25 \
+    --model SEHTGNN
+
+
+

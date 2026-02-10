@@ -18,9 +18,12 @@ import torch.nn.functional as F
 from torch_geometric.utils import k_hop_subgraph
 
 from metrics_bin_updated import (
+    binary_auc_from_logits,
     roc_auc_from_logits,
     ap_from_logits,
+    precision_at_k_from_logits,
     recall_at_k_from_logits,
+    f1_from_logits,
     ndcg_at_k_from_logits,
 )
 
@@ -481,15 +484,18 @@ def eval_one_snapshot(
         snapshot_labels[anchor_b] = float(int(y))
 
     if used == 0:
-        return 0.0, {"roc_auc": 0.5, "ap": 0.0, "recall@k": 0.0, "ndcg@k": 0.0}
+        return 0.0, {"auc": 0.5, "roc_auc": 0.5, "ap": 0.0, "F1": 0.0, "precision@k": 0.0, "recall@k": 0.0, "ndcg@k": 0.0}
 
     avg_loss = loss_sum / float(used)
     scores_cpu_t = torch.tensor(scores_cpu, dtype=torch.float32)
     labels_cpu_t = torch.tensor(labels_cpu, dtype=torch.float32)
 
     metrics = {
+        "auc": binary_auc_from_logits(scores_cpu_t, labels_cpu_t),
         "roc_auc": roc_auc_from_logits(scores_cpu_t, labels_cpu_t),
         "ap": ap_from_logits(scores_cpu_t, labels_cpu_t),
+        "F1": f1_from_logits(scores_cpu_t, labels_cpu_t),
+        "precision@k": precision_at_k_from_logits(scores_cpu_t, labels_cpu_t, k=args.k_eval),
         "recall@k": recall_at_k_from_logits(scores_cpu_t, labels_cpu_t, k=args.k_eval),
         "ndcg@k": ndcg_at_k_from_logits(scores_cpu_t, labels_cpu_t, k=args.k_eval),
     }
@@ -565,22 +571,11 @@ def train_one_run(args):
     warmup_time = _now() - t0
 
     # ---- rolling ----
-    acc = {h: {"loss": 0.0, "roc_auc": 0.0, "ap": 0.0, "recall@k": 0.0, "ndcg@k": 0.0, "n": 0} for h in Hs}
+    acc = {h: {"loss": 0.0, "auc": 0.0, "roc_auc": 0.0, "ap": 0.0, "F1": 0.0, "precision@k": 0.0, "recall@k": 0.0, "ndcg@k": 0.0, "n": 0} for h in Hs}
 
     _sync_if_cuda(device)
     t1 = _now()
     for idx in range(W, S - Hmax):
-        _ = train_step_one_snapshot(
-            args=args,
-            ds=ds,
-            snap=snaps[idx],
-            Nb=Nb,
-            encoder=encoder,
-            head=head,
-            opt=opt,
-            ce=ce,
-            device=device,
-        )
 
         for h in Hs:
             loss_h, m_h = eval_one_snapshot(
@@ -595,8 +590,11 @@ def train_one_run(args):
                 horizon=h,
             )
             acc[h]["loss"] += float(loss_h)
+            acc[h]["auc"] += float(m_h["auc"])
             acc[h]["roc_auc"] += float(m_h["roc_auc"])
             acc[h]["ap"] += float(m_h["ap"])
+            acc[h]["F1"] += float(m_h["F1"])
+            acc[h]["precision@k"] += float(m_h["precision@k"])
             acc[h]["recall@k"] += float(m_h["recall@k"])
             acc[h]["ndcg@k"] += float(m_h["ndcg@k"])
             acc[h]["n"] += 1
@@ -607,10 +605,25 @@ def train_one_run(args):
                 n = acc[h]["n"]
                 if n > 0:
                     msg.append(
-                        f"h{h}:ROC={acc[h]['roc_auc'] / n:.3f},AP={acc[h]['ap'] / n:.3f},"
+                        f"h{h}:AUC={acc[h]['auc'] / n:.3f} ,ROC-AUC={acc[h]['roc_auc'] / n:.3f},AP={acc[h]['ap'] / n:.3f},F1={acc[h]['F1'] / n:.3f}, "
+                        f"P@{args.k_eval}={acc[h]['precision@k'] / n:.3f}, R@{args.k_eval}={acc[h]['recall@k'] / n:.3f}, "
                         f"NDCG@{args.k_eval}={acc[h]['ndcg@k'] / n:.3f}"
                     )
             print("  " + " | ".join(msg))
+
+        _ = train_step_one_snapshot(
+            args=args,
+            ds=ds,
+            snap=snaps[idx],
+            Nb=Nb,
+            encoder=encoder,
+            head=head,
+            opt=opt,
+            ce=ce,
+            device=device,
+        )
+
+
 
     _sync_if_cuda(device)
     rolling_time = _now() - t1
@@ -620,8 +633,11 @@ def train_one_run(args):
         n = max(1, acc[h]["n"])
         summary[h] = {
             "avg_loss": acc[h]["loss"] / n,
+            "auc": acc[h]["auc"] / n,
             "roc_auc": acc[h]["roc_auc"] / n,
             "ap": acc[h]["ap"] / n,
+            "F1": acc[h]["F1"] / n,
+            "precision@k": acc[h]["precision@k"] / n,
             "recall@k": acc[h]["recall@k"] / n,
             "ndcg@k": acc[h]["ndcg@k"] / n,
             "steps": acc[h]["n"],
@@ -647,7 +663,7 @@ def parse_args():
     p.add_argument("--test_horizons", type=int, nargs="+", default=[1])
 
     # task params
-    p.add_argument("--recent_window", type=int, default=6, help="how many recent months to define reviewers/peers")
+    p.add_argument("--recent_window", type=int, default=3, help="how many recent months to define reviewers/peers")
     p.add_argument("--quantile", type=float, default=0.5, help="0.5=median, 0.75=top-quartile threshold")
     p.add_argument("--min_reviewers", type=int, default=5)
     p.add_argument("--min_peers", type=int, default=5)
@@ -663,13 +679,13 @@ def parse_args():
     p.add_argument("--lr", type=float, default=1e-3)
 
     # sampling
-    p.add_argument("--anchors_train", type=int, default=256)
-    p.add_argument("--anchors_eval", type=int, default=512)
+    p.add_argument("--anchors_train", type=int, default=128)
+    p.add_argument("--anchors_eval", type=int, default=128)
     p.add_argument("--k_eval", type=int, default=50)
 
     # warmup/rolling
-    p.add_argument("--warmup_snaps", type=int, default=6)
-    p.add_argument("--epochs_warmup", type=int, default=3)
+    p.add_argument("--warmup_snaps", type=int, default=12)
+    p.add_argument("--epochs_warmup", type=int, default=1)
     #p.add_argument("--anneal", type=float, default=0.9)        # kept for CLI compatibility (unused here)
     p.add_argument("--print_every", type=int, default=1)
 
@@ -699,7 +715,8 @@ def main():
     for h, m in summ0.items():
         print(
             f"  horizon={h} avg_loss={m['avg_loss']:.6f} "
-            f"ROC-AUC={m['roc_auc']:.3f} Average Precision={m['ap']:.3f} "
+            f"AUC={m['auc']:.3f} ROC-AUC={m['roc_auc']:.3f} Average Precision={m['ap']:.3f} F1={m['F1']:.3f} "
+            f"Precision@{args.k_eval}={m['precision@k']:.3f} Recall@{args.k_eval}={m['recall@k']:.3f} "
             f"NDCG@{args.k_eval}={m['ndcg@k']:.3f} "
             f"steps={m['steps']}"
         )
