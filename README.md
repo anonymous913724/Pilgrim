@@ -228,21 +228,6 @@ Full model with attention and optional FAISS with unified training.
 --burnin_eval INT           Skip first B snapshots (default: 0)
 ```
 
-### compare_pems_faiss.py
-
-Hardcoded configuration for PEMS traffic data (no command line arguments). Edit constants at the top of the file to configure:
-
-```
-MODEL_NAME              DCRNN, SEHTGNN, or TASER
-USE_ATTN               Enable attention model
-USE_MIXUP              Enable mixup and metric loss
-HORIZON                Prediction horizon (1 or 3)
-LAGS, D_EMB, DCRNN_K   Model dimensions
-K_HOP, THRESHOLD       Subgraph parameters
-EPOCHS, LR             Training parameters
-Various loss weights and FAISS settings
-```
-
 ### yelp_baseline.py
 
 DGNN-only baseline for Yelp reviewer prediction.
@@ -354,9 +339,13 @@ Full attention model with FAISS candidate retrieval for Yelp.
 --faiss_require_torch_gpu Hard-fail if torch GPU unavailable
 ```
 
-## Hardcoded Configuration Files
+## Additional files
 
-The following files use hardcoded configuration constants instead of command line arguments. Edit the constants at the top of each file to configure:
+The following files use constants at the top of each file instead of command line arguments. Edit the constants at the top of each file to configure.
+
+### compare_pems_faiss.py
+
+Attention model with FAISS for PEMS traffic (node-level).
 
 ### compare_yelp_simple.py
 Yelp business prediction with simplified attention model.
