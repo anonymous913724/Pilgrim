@@ -36,12 +36,31 @@ Run one of the provided scripts. These call the Python entry points with the exp
 ./run_compare_yelp.sh
 ```
 
+## Project File Structure
+
+```
+README.md                       Project overview and usage
+requirements.txt                Python dependencies
+setup.sh                        Environment setup script
+run_compare_covid.sh            Run COVID experiments on 3 PILGRIM configs + 3 baseline configs 
+run_compare_covid_unify.sh      Run COVID experiments on 3 PILGRIM configs + 3 baseline configs w/ unified metrics
+run_compare_pems_faiss.sh       Run PEMS Bay experimenmts
+run_compare_yelp.sh             Run YELP experiments on 2 PILGRIM configs + 2 baseline configs
+soft_topk_attn/                 Main source tree
+	covid/                        COVID experiments
+	pems/                         PEMS experiments
+	yelp/                         Yelp experiments
+	wiki/                         Wiki experiments (unused)
+	data/                         Dataset loaders and utilities
+	models/                       Model components, losses, and metrics for experiments
+```
+
 ## Command Line Arguments
 
 If you wish, you can also run these experiment files manually. Below is a list of experiment scripts you can run and their command line arguments (if applicable). You should run these from the root directory of this project, e.g.:
 
 ```bash
-python3 soft_topk_attn/compare_pems_faiss.py
+python3 soft_topk_attn/pems/compare_pems_faiss.py
 ```
 
 ### compare_covid_baseline.py
@@ -363,3 +382,4 @@ Multi-snapshot PEMS with attention model.
 ### multi_pems_attn_unify.py
 Multi-snapshot PEMS with attention and unified training.
 
+###
