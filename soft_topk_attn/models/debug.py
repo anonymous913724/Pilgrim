@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from attention_layer import QKOnlySoftTopKAttention
 from soft_topk_attn.models.diversity_loss_f import diversity_loss
 
+
 def example_loss_func(emb_q: torch.Tensor, emb_a: torch.Tensor, context: torch.Tensor) -> torch.Tensor:
     target = emb_q + emb_a
     return F.mse_loss(context, target)

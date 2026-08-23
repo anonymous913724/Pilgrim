@@ -9,7 +9,6 @@
 #   If you want to guarantee the torch-GPU fastpath (no numpy fallback), set require_torch_gpu=True.
 
 from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Optional, Tuple
 

@@ -1,7 +1,6 @@
 import torch
 from sentence_transformers import SentenceTransformer
 from typing import Union, Sequence
-
 import torch.nn as nn
 
 

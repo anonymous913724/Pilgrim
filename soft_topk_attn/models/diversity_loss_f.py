@@ -1,5 +1,6 @@
 import torch
 
+
 def diversity_loss(attn: torch.Tensor, emb_nodes: torch.Tensor, k: int, node_mask: torch.Tensor = None,) -> torch.Tensor:
     """
     attn:      [N]

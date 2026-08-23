@@ -1,3 +1,4 @@
+
 PEMS-BAY
 (DCRNN)exclude metric:
 epoch=1 train_loss=0.455803 val_loss=0.361264 val(h1 AUC=0.837, F1=0.927, P@50=0.991; h3 AUC=0.826, F1=0.929, P@50=0.993) test_loss=0.431038 test(h1 AUC=0.815, F1=0.903, P@50=0.972; h3 AUC=0.796, F1=0.899, P@50=0.968) k_frac=0.0515

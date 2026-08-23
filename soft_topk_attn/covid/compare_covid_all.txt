@@ -4,6 +4,7 @@ train_end_start=2022-01-27  holdout_snaps=0
 anchors kept (deg>0)=3125/3141
 tau_thr(label) percentile=0.80 computed on train = 11.675533
 
+
 === COVID Hotspot Exceedance Task | DGNN-only baseline | model=DCRNN ===
 run_time=84.11s
   [train] avg_loss=0.478828 ROC-AUC=0.853 Average Precision=0.710 Precision@50=0.657 F1=0.360 Recall@50=0.533 NDCG@50=0.741 steps=27

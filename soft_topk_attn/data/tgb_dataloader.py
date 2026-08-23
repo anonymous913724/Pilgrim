@@ -2,6 +2,7 @@ from tgb.linkproppred.dataset_pyg import PyGLinkPropPredDataset, LinkPropPredDat
 from torch_geometric.data import Data
 import numpy as np
 import torch
+
     
 class TGBDatasetLoader(object):
     def __init__(self, name, root="datasets"):

@@ -1,5 +1,5 @@
 """
-
+ 
 Build a PyTorch-Geometric-Temporal dataset:
   - Static spatial graph: U.S. county adjacency (Census county adjacency file)
   - Dynamic node features: 7-day snapshot features from NYT county COVID data

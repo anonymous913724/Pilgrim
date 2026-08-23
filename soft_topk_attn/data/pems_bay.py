@@ -2,6 +2,7 @@ import numpy as np
 from torch_geometric_temporal.signal import StaticGraphTemporalSignal
 import torch
 
+
 def adj_to_edge_index_weight(adj: np.ndarray, threshold: float = 0.0):
     """
     adj: [N, N]

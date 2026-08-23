@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 from typing import Optional
 
+
 class MixupWithMemory():
     def __init__(self, num_classes, d_emb, lamb=0.5, device=None, memory_limit=500):
         if device is None:

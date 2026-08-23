@@ -1,7 +1,6 @@
 #   Train DGNN (baseline) on the PEMS BAY Node-level prediction task
 #   Use tSNE to visualize the learned node embeddings for the last snapshot after training.
 
-import math
 
 import math
 from typing import Optional, Tuple

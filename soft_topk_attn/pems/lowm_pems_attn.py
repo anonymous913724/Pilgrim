@@ -1,4 +1,3 @@
-
 #   Node-level prediction task.
 
 from typing import Optional, Tuple

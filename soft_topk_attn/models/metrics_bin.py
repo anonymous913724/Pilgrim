@@ -1,6 +1,7 @@
 import torch
 from torch_scatter import scatter_mean
 
+
 @torch.no_grad()
 def binary_f1_from_logits(logits: torch.Tensor, labels: torch.Tensor, thr: float = 0.5) -> float:
     """

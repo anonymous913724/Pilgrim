@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 class MetricLoss(nn.Module):
     def __init__(self, num_classes, d_emb, code_size, beta=1, lamb=0.5, device=None):
         super(MetricLoss, self).__init__()
